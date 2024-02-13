@@ -17,9 +17,10 @@ class PhotoFrame {
     private lastWindowWidth: number = 0;
     private animateWidth: number = 0;
     private animateHeight: number = 0;
-    private originalPicturesUrls: string[] = [];
-    private pictureUrlStack: string[] = [];
+    private originalUrls: string[] = [];
+    private urlStack: string[] = [];
     private nextCounter: number = -1;
+    private toggle: boolean = false;
     private delay: number = 50 * 10;
     private shuffle: boolean = true;
 
@@ -27,9 +28,7 @@ class PhotoFrame {
         if (this.nextCounter >= 0) {
             this.nextCounter += 1;
             if (this.nextCounter > this.delay) {
-                this.setNextPictures(() => this.forceRedraw());
-                window.requestAnimationFrame(() => this.draw());
-                return;
+                this.toggleNextUrl();
             }    
         }
         if (this.dirty) {
@@ -129,7 +128,7 @@ class PhotoFrame {
         return animate;
     }
 
-    private calculateDimension(canvas: HTMLCanvasElement, lastW: number): Dimension {                
+    private getWidthAndHeight(canvas: HTMLCanvasElement, lastW: number): Dimension {                
         const fac: number = 3 / 4;
         let w: number = window.innerWidth;
         let h: number = Math.floor(w * fac);
@@ -148,75 +147,68 @@ class PhotoFrame {
         return {w, h};
     }
 
-    private updatePicture(url: string | undefined, finished: (image: HTMLImageElement | undefined) => any): void {
+    private createImage(url: string | undefined): HTMLImageElement | undefined {
         if (url) {
             const img = new Image();
             img.src = url;
-            img.addEventListener("load", () => finished(img), false);
+            img.addEventListener("load", () => {
+                this.dirty = true;
+                this.nextCounter = 0;
+            }, false);
+            return img;
         }
-        else {
-            finished(undefined);
-        }
+        return undefined;
     }
 
-    private getNextPictureUrl(): string | undefined {
-        if (this.originalPicturesUrls && this.originalPicturesUrls.length > 0) {
-            let url: string | undefined = this.pictureUrlStack.pop();
+    private getNextUrl(): string | undefined {
+        if (this.originalUrls && this.originalUrls.length > 0) {
+            let url: string | undefined = this.urlStack.pop();
             if (!url) {
-                this.pictureUrlStack = [...this.originalPicturesUrls];
+                this.urlStack = [...this.originalUrls];
                 if (this.shuffle) {
-                    ArrayUtils.shuffle(this.pictureUrlStack);
+                    ArrayUtils.shuffle(this.urlStack);
                 }
-                url = this.pictureUrlStack.pop();
+                url = this.urlStack.pop();
             }
             return url;
         }
         return undefined;
     }
 
-    private getNextPictureUrls(): [string?, string?] {
-        let firstUrl: string | undefined = this.getNextPictureUrl();
-        let secondUrl: string | undefined;
-        if (this.extraCanvas) {
-            secondUrl = this.getNextPictureUrl();
+    private toggleNextUrl(): void {
+        const img: HTMLImageElement | undefined = this.createImage(this.getNextUrl());
+        if (this.extraCanvas && this.toggle) {
+            this.extraImage = img;
         }
-        return [firstUrl, secondUrl];
-    }
-
-    private setNextPictures(finished: () => any): void {
-        this.nextCounter = -1; // disable increase until loading
-        const urls: [string?, string?] = this.getNextPictureUrls();
-        this.updatePicture(urls[0], (img) => {
+        else {
             this.image = img;
-            this.updatePicture(urls[1], (extraImg) => {
-                this.extraImage = extraImg;
-                finished();
-            })
-        });
+        }
+        this.toggle = !this.toggle;
+        this.dirty = true;
     }
 
-    private onResize(finished: () => any): void {
-        const dim: Dimension = this.calculateDimension(this.canvas!, this.lastWindowWidth);            
-        this.animateWidth = dim.w;
-        this.animateHeight = dim.h;
-        this.lastWindowWidth = window.innerWidth;
+    private createExtraCanvas(height: number): void {
         let extraContainer: HTMLElement = document.getElementById("extra")!;
-        if (window.innerHeight > 2 * dim.h && !this.extraCanvas) {
+        if (window.innerHeight > 2 * height && !this.extraCanvas) {
             this.extraCanvas = ControlUtils.create(extraContainer, "canvas") as HTMLCanvasElement;
             this.extraCanvas.width = this.canvas!.width;
             this.extraCanvas.height = this.canvas!.height;
-            this.updatePicture(this.getNextPictureUrl(), (img) => {
-                this.extraImage = img;
-                finished();
-            });
+            this.extraImage = this.createImage(this.getNextUrl());
         }
-        else {
-            if (window.innerHeight <= 2 * dim.h) {
-                this.extraCanvas = undefined;
-                ControlUtils.removeAllChildren(extraContainer);
-            }
-            finished();
+        else if (window.innerHeight <= 2 * height) {
+            this.extraCanvas = undefined;
+            ControlUtils.removeAllChildren(extraContainer);
         }
+    }
+
+    private onResize(): void {
+        const dim: Dimension = this.getWidthAndHeight(this.canvas!, this.lastWindowWidth);            
+        this.animateWidth = dim.w;
+        this.animateHeight = dim.h;
+        this.lastWindowWidth = window.innerWidth;
+        this.createExtraCanvas(dim.h);
+        this.nextCounter = 0;
+        this.dirty = true;
     }
 
     private render(): void {
@@ -225,22 +217,18 @@ class PhotoFrame {
         const extraDiv: HTMLDivElement = ControlUtils.createDiv(document.body, "container");
         extraDiv.id = "extra";
         this.canvas = ControlUtils.create(mainDiv, "canvas") as HTMLCanvasElement;
-        addEventListener("click", () => this.setNextPictures(() => this.forceRedraw()));
-        addEventListener("resize", () => this.onResize(() => this.forceRedraw()));
-        const dim: Dimension = this.calculateDimension(this.canvas!, this.lastWindowWidth);
+        const dim: Dimension = this.getWidthAndHeight(this.canvas!, this.lastWindowWidth);
         this.canvas!.width = dim.w;
         this.canvas!.height = dim.h;
-        this.setNextPictures(() => {
-            this.onResize(() => this.forceRedraw());
-        });
+        this.animateWidth = dim.w;
+        this.animateHeight = dim.h;
+        this.createExtraCanvas(dim.h)
+        this.toggleNextUrl();
+        addEventListener("click", () => this.toggleNextUrl());
+        addEventListener("resize", () => this.onResize());
     }
 
-    private forceRedraw(): void {
-        this.nextCounter = 0;
-        this.dirty = true;
-    };
-
-    private get_session_storage(key:string):string | undefined {
+    private get_session_storage(key:string): string | undefined {
         try {
             const value:string|null = window.sessionStorage.getItem(key);
             if (value) {
@@ -250,9 +238,9 @@ class PhotoFrame {
         catch {
         }
         return undefined;
-    };
+    }
 
-    private get_authentication_token():string | undefined {
+    private get_authentication_token(): string | undefined {
         let pwdmanState;
         let str = this.get_session_storage("pwdman-state");
         if (str && str.length > 0) {
@@ -262,9 +250,9 @@ class PhotoFrame {
             }
         }
         return undefined;
-    };
+    }
 
-    init(): void  {
+    async initAsync(): Promise<void>  {
         const params:URLSearchParams = new URLSearchParams(window.location.search);
         if (params.has("delay")) {
             this.delay = parseInt(params.get("delay")!);
@@ -278,22 +266,20 @@ class PhotoFrame {
             requestInit = { headers: { "token": token } };
         }
         // endpoint on stockfleth.eu
-        window.fetch("/api/pwdman/photoframe", requestInit).then(resp => {
-            resp.json().then(json => {
-                this.originalPicturesUrls = json as string[];
-                this.pictureUrlStack = [...this.originalPicturesUrls];
-                if (this.shuffle) {
-                    ArrayUtils.shuffle(this.pictureUrlStack);
-                }
-                this.render();
-                window.requestAnimationFrame(() => this.draw());    
-            })
-        });
+        const resp: Response = await window.fetch("/api/pwdman/photoframe", requestInit);
+        const json = await resp.json();
+        this.originalUrls = json as string[];
+        this.urlStack = [...this.originalUrls];
+        if (this.shuffle) {
+            ArrayUtils.shuffle(this.urlStack);
+        }
+        this.render();
+        window.requestAnimationFrame(() => this.draw());    
     }
 
 }
 
 const photoFrame: PhotoFrame = new PhotoFrame();
 
-window.onload = () => photoFrame.init();
+window.onload = () => photoFrame.initAsync();
 
