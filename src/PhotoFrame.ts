@@ -151,10 +151,6 @@ class PhotoFrame {
         if (url) {
             const img = new Image();
             img.src = url;
-            img.addEventListener("load", () => {
-                this.dirty = true;
-                this.nextCounter = 0;
-            }, false);
             return img;
         }
         return undefined;
@@ -165,9 +161,6 @@ class PhotoFrame {
             let url: string | undefined = this.urlStack.pop();
             if (!url) {
                 this.urlStack = [...this.originalUrls];
-                if (this.shuffle) {
-                    ArrayUtils.shuffle(this.urlStack);
-                }
                 url = this.urlStack.pop();
             }
             return url;
@@ -176,15 +169,25 @@ class PhotoFrame {
     }
 
     private toggleNextUrl(): void {
+        this.nextCounter = 0;
         const img: HTMLImageElement | undefined = this.createImage(this.getNextUrl());
-        if (this.extraCanvas && this.toggle) {
-            this.extraImage = img;
+        if (img) {
+            if (this.extraCanvas && this.toggle) {
+                img.addEventListener("load", () => {
+                    this.extraImage = img;
+                    this.dirty = true;
+                    this.nextCounter = 0;
+                }, false);
+            }
+            else {
+                img.addEventListener("load", () => {
+                    this.image = img;
+                    this.dirty = true;
+                    this.nextCounter = 0;
+                }, false);
+            }
+            this.toggle = !this.toggle;
         }
-        else {
-            this.image = img;
-        }
-        this.toggle = !this.toggle;
-        this.dirty = true;
     }
 
     private createExtraCanvas(height: number): void {
@@ -193,7 +196,14 @@ class PhotoFrame {
             this.extraCanvas = ControlUtils.create(extraContainer, "canvas") as HTMLCanvasElement;
             this.extraCanvas.width = this.canvas!.width;
             this.extraCanvas.height = this.canvas!.height;
-            this.extraImage = this.createImage(this.getNextUrl());
+            const img = this.createImage(this.getNextUrl());
+            if (img) {
+                img.addEventListener("load", () => {
+                    this.extraImage = img;
+                    this.dirty = true;
+                    this.nextCounter = 0;
+                }, false);    
+            }
         }
         else if (window.innerHeight <= 2 * height) {
             this.extraCanvas = undefined;
@@ -269,10 +279,10 @@ class PhotoFrame {
         const resp: Response = await window.fetch("/api/pwdman/photoframe", requestInit);
         const json = await resp.json();
         this.originalUrls = json as string[];
-        this.urlStack = [...this.originalUrls];
         if (this.shuffle) {
-            ArrayUtils.shuffle(this.urlStack);
+            ArrayUtils.shuffle(this.originalUrls);
         }
+        this.urlStack = [...this.originalUrls];
         this.render();
         window.requestAnimationFrame(() => this.draw());    
     }
