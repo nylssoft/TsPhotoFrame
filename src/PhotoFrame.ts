@@ -10,26 +10,38 @@ type Dimension = {
 class PhotoFrame {
     
     private canvas?: HTMLCanvasElement;
+    private extraCanvas?: HTMLCanvasElement;
     private dirty: boolean = true;
     private image?: HTMLImageElement;
+    private extraImage?: HTMLImageElement;
     private lastWindowWidth: number = 0;
     private animateWidth: number = 0;
     private animateHeight: number = 0;
-    private pictures: string[] = [];
-    private pictureIdx: number = 0;
-    private randmonIndices: number[] = [];
-    private nextCounter: number = 0;
+    private originalPicturesUrls: string[] = [];
+    private pictureUrlStack: string[] = [];
+    private nextCounter: number = -1;
     private delay: number = 50 * 10;
     private shuffle: boolean = true;
 
     private draw(): void {
-        this.nextCounter += 1;
-        if (this.nextCounter > this.delay) {
-            this.setNextPicture();
+        if (this.nextCounter >= 0) {
+            this.nextCounter += 1;
+            if (this.nextCounter > this.delay) {
+                this.setNextPictures(() => this.forceRedraw());
+                window.requestAnimationFrame(() => this.draw());
+                return;
+            }    
         }
-        if (this.dirty && this.canvas) {
-            const ctx: CanvasRenderingContext2D = this.canvas!.getContext("2d")!;
-            this.dirty = this.drawImage(ctx, this.canvas, this.image, this.animateWidth, this.animateHeight);
+        if (this.dirty) {
+            if (this.canvas) {
+                const ctx: CanvasRenderingContext2D = this.canvas.getContext("2d")!;
+                this.dirty = this.drawImage(ctx, this.canvas, this.image, this.animateWidth, this.animateHeight);    
+            }
+            if (this.extraCanvas) {
+                const ctx: CanvasRenderingContext2D = this.extraCanvas.getContext("2d")!;
+                let dirty: boolean = this.drawImage(ctx, this.extraCanvas, this.extraImage, this.animateWidth, this.animateHeight);
+                this.dirty = this.dirty || dirty;
+            }
         }
         window.requestAnimationFrame(() => this.draw());
     }
@@ -37,55 +49,68 @@ class PhotoFrame {
     private drawImage(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, image: HTMLImageElement | undefined, animateWidth: number, animateHeight: number): boolean {
         let w: number = canvas.width;
         let h: number = canvas.height;
-
-        const speed = 10;
+        // animate canvas size to resized width and height
         let animate = false;
-        if (w != animateWidth) {
+        let speedX = 10;
+        let speedY = speedX;
+        const stepsWidth = Math.abs(w - animateWidth);
+        const stepsHeight = Math.abs(h - animateHeight);
+        if (stepsWidth > 0 && stepsHeight > 0) {
+            const stepsFac = stepsHeight / stepsWidth;
+            speedY = speedX * stepsFac;
+        }
+        if (stepsWidth > 0) {
             if (w < animateWidth) {
-                w = Math.min(animateWidth, w + speed);
+                w = Math.floor(Math.min(animateWidth, w + speedX));
             }
             else {
-                w = Math.max(animateWidth, w - speed);
+                w = Math.floor(Math.max(animateWidth, w - speedX));
             }
             canvas.width = w;
             animate = true;
         }
-        if (h != animateHeight) {
+        if (stepsHeight > 0) {
             if (h < animateHeight) {
-                h = Math.min(animateHeight, h + speed);
+                h = Math.floor(Math.min(animateHeight, h + speedY));
             }
             else {
-                h = Math.max(animateHeight, h - speed);
+                h = Math.floor(Math.max(animateHeight, h - speedY));
             }
             canvas.height = h;
             animate = true;
         }
-
+        // draw canvas
         ctx.clearRect(0, 0, w, h);
-
-        const bw = Math.floor(w / 40);
-        const gap: number = bw;
-
+        const bw: number = Math.floor(w / 40);
+        const x1: number = 2 * bw;
+        const x2: number = w - 3 * bw;
+        const y1: number = bw;
+        const y2: number = h - 2 * bw;
+        const paperW: number = w - 4 * bw;
+        const paperH: number = h - 2 * bw;
+        // draw paper background
         ctx.fillStyle = "white";
-        ctx.fillRect(gap + bw, gap, w - 4 * gap, h - 2 * gap);
-
+        ctx.fillRect(x1, y1, paperW, paperH);
+        // draw black border
         ctx.fillStyle = "black";
-        ctx.fillRect(gap + bw, gap, w - 4 * gap, bw);
-        ctx.fillRect(gap + bw, h - gap - bw, w - 4 * gap, bw);
-
-        ctx.fillRect(gap + bw, gap + bw, bw, h - 2 * gap - 2 * bw);
-        ctx.fillRect(w - 4 * gap + bw, gap + bw, bw, h - 2 * gap - 2 * bw);
-
+        // top left to top right
+        ctx.fillRect(x1, y1, paperW, bw);
+        // buttom left to bottom right
+        ctx.fillRect(x1, y2, paperW, bw);
+        // top left to bottom left
+        ctx.fillRect(x1, y1 + bw, bw, y2 - 2 * bw);
+        // top right to bottom right
+        ctx.fillRect(x2, y1 + bw, bw, y2 - 2 * bw);
         if (image) {
-            let ix = gap + bw + 2 * bw;
-            let iy = gap + bw + 2 * bw;
-            const origw = w - 4 * gap - 4 * bw;
-            const origh = h - 2 * gap - 6 * bw;
-            let iw = origw;
-            let ih = origh;
+            let ix: number = 4 * bw;
+            let iy: number = 4 * bw;
+            const origw: number = w - 8 * bw;
+            const origh: number = h - 8 * bw;
+            let iw: number = origw;
+            let ih: number = origh;
             // keep ratio of original image, image has to fit always
-            const ratio = image.width / image.height;
-            const niw = ih * ratio;
+            const ratio: number = image.width / image.height;
+            const niw: number = ih * ratio;
             if (niw <= iw) {
                 iw = Math.floor(niw);
             }
@@ -104,45 +129,15 @@ class PhotoFrame {
         return animate;
     }
 
-    private updatePicture(): void {
-        if (this.pictures.length > 0) {
-            const idx = this.randmonIndices[this.pictureIdx];
-            const url: string = this.pictures[idx];
-            const img = new Image();
-            img.src = url;
-            img.addEventListener("load", () => {
-                this.nextCounter = 0;
-                this.image = img;            
-                this.dirty = true;
-            },
-            false);        
-        }
-    }
-
-    private setNextPicture():void {
-        if (this.pictures) {
-            this.pictureIdx += 1;
-            if (this.pictureIdx >= this.randmonIndices.length) {
-                this.pictureIdx = 0;
-            }
-            this.updatePicture();
-        }
-    }
-
-    private calculateDimension(canvas: HTMLCanvasElement, lastW: number): Dimension {
-                
-        const fac: number = 600 / 800;
-
+    private calculateDimension(canvas: HTMLCanvasElement, lastW: number): Dimension {                
+        const fac: number = 3 / 4;
         let w: number = window.innerWidth;
         let h: number = Math.floor(w * fac);
-
-        const bw = Math.floor(w / 40);
-        const gap: number = bw * 2;
-        w = w - gap;
-        h = h - gap;
-
+        const bw: number = Math.floor(w / 40);
+        w = w - 2 * bw;
+        h = h - 2 * bw;
         while (h > window.innerHeight) {
-            w = w - gap;
+            w = w - bw;
             h = Math.floor(w * fac);
         }
         if (window.innerWidth > lastW && w < canvas.width ||
@@ -153,31 +148,97 @@ class PhotoFrame {
         return {w, h};
     }
 
-    private onResize(): void {
-        if (this.canvas) {
-            const dim: Dimension = this.calculateDimension(this.canvas, this.lastWindowWidth);            
-            this.animateWidth = dim.w;
-            this.animateHeight = dim.h;
-            this.dirty = true;
-            this.lastWindowWidth = window.innerWidth;
+    private updatePicture(url: string | undefined, finished: (image: HTMLImageElement | undefined) => any): void {
+        if (url) {
+            const img = new Image();
+            img.src = url;
+            img.addEventListener("load", () => finished(img), false);
+        }
+        else {
+            finished(undefined);
         }
     }
 
-    private renderPhotoFrame(parent: HTMLElement): void {
-        this.canvas = ControlUtils.create(parent, "canvas") as HTMLCanvasElement;
-        addEventListener("click", (event) => this.setNextPicture());
-        addEventListener("resize", (event) => this.onResize());
-        this.onResize();
-        this.canvas.width = this.animateWidth;
-        this.canvas.height = this.animateHeight;
+    private getNextPictureUrl(): string | undefined {
+        if (this.originalPicturesUrls && this.originalPicturesUrls.length > 0) {
+            let url: string | undefined = this.pictureUrlStack.pop();
+            if (!url) {
+                this.pictureUrlStack = [...this.originalPicturesUrls];
+                if (this.shuffle) {
+                    ArrayUtils.shuffle(this.pictureUrlStack);
+                }
+                url = this.pictureUrlStack.pop();
+            }
+            return url;
+        }
+        return undefined;
+    }
+
+    private getNextPictureUrls(): [string?, string?] {
+        let firstUrl: string | undefined = this.getNextPictureUrl();
+        let secondUrl: string | undefined;
+        if (this.extraCanvas) {
+            secondUrl = this.getNextPictureUrl();
+        }
+        return [firstUrl, secondUrl];
+    }
+
+    private setNextPictures(finished: () => any): void {
+        this.nextCounter = -1; // disable increase until loading
+        const urls: [string?, string?] = this.getNextPictureUrls();
+        this.updatePicture(urls[0], (img) => {
+            this.image = img;
+            this.updatePicture(urls[1], (extraImg) => {
+                this.extraImage = extraImg;
+                finished();
+            })
+        });
+    }
+
+    private onResize(finished: () => any): void {
+        const dim: Dimension = this.calculateDimension(this.canvas!, this.lastWindowWidth);            
+        this.animateWidth = dim.w;
+        this.animateHeight = dim.h;
+        this.lastWindowWidth = window.innerWidth;
+        let extraContainer: HTMLElement = document.getElementById("extra")!;
+        if (window.innerHeight > 2 * dim.h && !this.extraCanvas) {
+            this.extraCanvas = ControlUtils.create(extraContainer, "canvas") as HTMLCanvasElement;
+            this.extraCanvas.width = this.canvas!.width;
+            this.extraCanvas.height = this.canvas!.height;
+            this.updatePicture(this.getNextPictureUrl(), (img) => {
+                this.extraImage = img;
+                finished();
+            });
+        }
+        else {
+            if (window.innerHeight <= 2 * dim.h) {
+                this.extraCanvas = undefined;
+                ControlUtils.removeAllChildren(extraContainer);
+            }
+            finished();
+        }
     }
 
     private render(): void {
         ControlUtils.removeAllChildren(document.body);
         const mainDiv: HTMLDivElement = ControlUtils.createDiv(document.body, "container");
-        this.updatePicture();
-        this.renderPhotoFrame(mainDiv);
+        const extraDiv: HTMLDivElement = ControlUtils.createDiv(document.body, "container");
+        extraDiv.id = "extra";
+        this.canvas = ControlUtils.create(mainDiv, "canvas") as HTMLCanvasElement;
+        addEventListener("click", () => this.setNextPictures(() => this.forceRedraw()));
+        addEventListener("resize", () => this.onResize(() => this.forceRedraw()));
+        const dim: Dimension = this.calculateDimension(this.canvas!, this.lastWindowWidth);
+        this.canvas!.width = dim.w;
+        this.canvas!.height = dim.h;
+        this.setNextPictures(() => {
+            this.onResize(() => this.forceRedraw());
+        });
     }
+
+    private forceRedraw(): void {
+        this.nextCounter = 0;
+        this.dirty = true;
+    };
 
     private get_session_storage(key:string):string | undefined {
         try {
@@ -219,12 +280,11 @@ class PhotoFrame {
         // endpoint on stockfleth.eu
         window.fetch("/api/pwdman/photoframe", requestInit).then(resp => {
             resp.json().then(json => {
-                const pics: string[] = json as string[];
-                this.randmonIndices = ArrayUtils.buildRange(0, pics.length - 1);
+                this.originalPicturesUrls = json as string[];
+                this.pictureUrlStack = [...this.originalPicturesUrls];
                 if (this.shuffle) {
-                    ArrayUtils.shuffle(this.randmonIndices);
+                    ArrayUtils.shuffle(this.pictureUrlStack);
                 }
-                this.pictures = pics;
                 this.render();
                 window.requestAnimationFrame(() => this.draw());    
             })

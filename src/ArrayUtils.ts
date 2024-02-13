@@ -1,6 +1,6 @@
 ﻿export class ArrayUtils {
 
-    static shuffle(arr: number[]): void {
+    static shuffle(arr: any[]): void {
         let ridx;
         let tmp;
         let cidx = arr.length;
