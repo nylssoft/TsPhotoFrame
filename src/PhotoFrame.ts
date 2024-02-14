@@ -7,6 +7,25 @@ type Dimension = {
     h: number;
 };
 
+type AuthResult = {
+    requiresPin: boolean;
+    token: string;
+    username: string;
+    requiresPass2: boolean;
+    longLivedToken: string;
+};
+
+type ClientInfo = {
+    uuid: string;
+    name: string;
+};
+
+type PwdManState = {
+    token: string;
+    userName: string;    
+    requiresPass2: boolean;
+};
+
 class PhotoFrame {
     
     private canvas?: HTMLCanvasElement;
@@ -23,6 +42,8 @@ class PhotoFrame {
     private toggle: boolean = false;
     private delay: number = 50 * 10;
     private shuffle: boolean = true;
+
+    private memoryStorage: Map<string, string> = new Map();
 
     private draw(): void {
         if (this.nextCounter >= 0) {
@@ -238,9 +259,55 @@ class PhotoFrame {
         addEventListener("resize", () => this.onResize());
     }
 
-    private get_session_storage(key:string): string | undefined {
+    private getSessionStorage(key:string): string | undefined {
         try {
             const value:string|null = window.sessionStorage.getItem(key);
+            if (value) {
+                return value;
+            }
+        }
+        catch {
+            return this.memoryStorage.get(key);
+        }
+        return undefined;
+    }
+
+    private setSessionStorage(key: string, val: string): void {
+        try {
+            window.sessionStorage.setItem(key, val);
+        }
+        catch {
+            this.memoryStorage.set(key, val);
+        }
+    }
+
+    private removeSessionStorage(key: string): void {
+        try {
+            window.sessionStorage.removeItem(key);
+        }
+        catch {
+            this.memoryStorage.delete(key);
+        }
+    }
+
+    private getAuthenticationToken(): string | undefined {
+        const str: string | undefined = this.getSessionStorage("pwdman-state");
+        if (str && str.length > 0) {
+            const pwdmanState: PwdManState | undefined = JSON.parse(str) as PwdManState;
+            if (pwdmanState && !pwdmanState.requiresPass2 && pwdmanState.token.length > 0) {
+                return pwdmanState.token;
+            }
+        }
+        return undefined;
+    }
+
+    private isPinRequired(): boolean {
+        return this.getSessionStorage("pin-required") === "true";
+    }
+
+    private getLocalStorage(key: string): string | undefined {
+        try {
+            const value: string | null = window.localStorage.getItem(key);
             if (value) {
                 return value;
             }
@@ -250,19 +317,121 @@ class PhotoFrame {
         return undefined;
     }
 
-    private get_authentication_token(): string | undefined {
-        let pwdmanState;
-        let str = this.get_session_storage("pwdman-state");
-        if (str && str.length > 0) {
-            pwdmanState = JSON.parse(str);
-            if (pwdmanState && !pwdmanState.requiresPass2 && pwdmanState.token.length > 0) {
-                return pwdmanState.token;
-            }
+    private setLocalStorage(key: string, val: string): void {
+        try {
+            window.localStorage.setItem(key, val);
         }
-        return undefined;
+        catch {
+        }
     }
 
+    private removeLocalStorage(key: string): void {
+        try {
+            window.localStorage.removeItem(key);
+        }
+        catch {
+        }
+    };
+
+    private setPinRequired(required: boolean): void {
+        if (!required) {
+            this.removeSessionStorage("pin-required");
+        }
+        else {
+            this.setSessionStorage("pin-required", "true");
+        }
+    };
+
+    private getClientUuid(): string {
+        const ci: string | undefined = this.getLocalStorage("clientinfo");
+        if (ci && ci.length > 0) {
+            const clientInfo: ClientInfo | undefined = JSON.parse(ci) as ClientInfo;
+            if (clientInfo) {
+                return clientInfo.uuid;
+            }
+        }
+        return "";
+    }
+
+    private sanitizeLocation(url: string): string {
+        let idx: number = -1;
+        if (url.length > 0) {
+            if (url.charAt(0) != "/") {
+                idx = url.indexOf("//");
+                if (idx >= 0) {
+                    url = url.substring(idx + 2);
+                    idx = url.indexOf("/");
+                    if (idx > 0) {
+                        url = url.substring(idx);
+                    }
+                }
+            }
+            if (url.startsWith("/webpack/")) {
+                return url;
+            }            
+            if (url.charAt(0) == "/") {
+                let testurl: string = url;
+                idx = testurl.indexOf("?");
+                if (idx > 0) {
+                    testurl = testurl.substring(0, idx);
+                }
+                const validurls: string[] = [
+                    "/backgammon", "/chess", "/contacts", "/diary", "/documents", "/notes", "/password",
+                    "/pwdman", "/skat", "/skatticket", "/slideshow", "/tetris", "/usermgmt", "/view", "/makeadate"];
+                if (validurls.includes(testurl)) {
+                    return url;
+                }
+            }
+        }
+        return "/view";
+    }
+
+    private getWindowLocation(): string {
+        return this.sanitizeLocation(window.location.href);
+    }
+
+    private setWindowLocation(url: string): void {
+        window.location.href = this.sanitizeLocation(url)
+    } 
+
+    private async authenticateLongLivedTokenAsync(): Promise<boolean> {
+        const token: string | undefined = this.getAuthenticationToken();
+        if (!token && !this.isPinRequired()) {
+            const lltoken: string | undefined = this.getLocalStorage("pwdman-lltoken");
+            if (lltoken) {
+                const requestInit: RequestInit = { headers: { "token": lltoken, "uuid": this.getClientUuid() } };
+                // endpoint on stockfleth.eu
+                const resp: Response = await window.fetch("/api/pwdman/auth/lltoken", requestInit);
+                if (!resp.ok) {
+                    this.removeLocalStorage("pwdman-lltoken");
+                    return false;
+                }
+                const authResult: AuthResult | undefined = await resp.json() as AuthResult;
+                if (authResult && !authResult.requiresPin) {
+                    const state: PwdManState = {
+                        "token": authResult.token,
+                        "userName": authResult.username,
+                        "requiresPass2": authResult.requiresPass2
+                    };
+                    this.setSessionStorage("pwdman-state", JSON.stringify(state));
+                    this.setLocalStorage("pwdman-lltoken", authResult.longLivedToken);
+                }
+                else {
+                    this.setPinRequired(true);
+                    this.setWindowLocation("/pwdman?nexturl=" + encodeURI(this.getWindowLocation()));
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+
     async initAsync(): Promise<void>  {
+        const redirected: boolean = await this.authenticateLongLivedTokenAsync();
+        if (redirected) {
+            return;
+        }
         const params:URLSearchParams = new URLSearchParams(window.location.search);
         if (params.has("delay")) {
             this.delay = parseInt(params.get("delay")!);
@@ -271,18 +440,20 @@ class PhotoFrame {
             this.shuffle = params.get("shuffle") != "false";
         }
         let requestInit: RequestInit | undefined = undefined;
-        const token: string | undefined = this.get_authentication_token();
+        const token: string | undefined = this.getAuthenticationToken();
         if (token) {
             requestInit = { headers: { "token": token } };
         }
         // endpoint on stockfleth.eu
         const resp: Response = await window.fetch("/api/pwdman/photoframe", requestInit);
-        const json = await resp.json();
-        this.originalUrls = json as string[];
-        if (this.shuffle) {
-            ArrayUtils.shuffle(this.originalUrls);
+        if (resp.ok) {
+            const json = await resp.json();
+            this.originalUrls = json as string[];
+            if (this.shuffle) {
+                ArrayUtils.shuffle(this.originalUrls);
+            }
+            this.urlStack = [...this.originalUrls];    
         }
-        this.urlStack = [...this.originalUrls];
         this.render();
         window.requestAnimationFrame(() => this.draw());    
     }
