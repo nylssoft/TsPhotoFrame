@@ -94,7 +94,7 @@ class PhotoFrame {
         ctx.fillStyle = "white";
         ctx.fillRect(x1, y1, paperW, paperH);
         // draw black border
-        ctx.fillStyle = "black";
+        ctx.fillStyle = "#eeeeee";
         // top left to top right
         ctx.fillRect(x1, y1, paperW, bw);
         // buttom left to bottom right
@@ -254,7 +254,13 @@ class PhotoFrame {
             this.shuffle = params.get("shuffle") != "false";
         }
         let requestInit: RequestInit | undefined = undefined;
-        const token: string | undefined = this.security.getAuthenticationToken();
+        let token: string | undefined = this.security.getAuthenticationToken();
+        if (!token) {
+            token = document.cookie
+                .split("; ")
+                .find((row) => row.startsWith("familyaccesstoken="))
+                ?.split("=")[1];
+        }
         if (token) {
             requestInit = { headers: { "token": token } };
         }
