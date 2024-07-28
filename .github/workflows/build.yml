@@ -1,0 +1,21 @@
+name: Build Photo Frame
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup node
+      uses: actions/setup-node@v4
+    - name: Build
+      run: |
+        npm install
+        npm run build
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ github.run_number }}
+        path: dist
