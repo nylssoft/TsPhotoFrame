@@ -85,24 +85,71 @@ class PhotoFrame {
         ctx.clearRect(0, 0, w, h);
         const bw: number = Math.floor(w / 40);
         const x1: number = 2 * bw;
-        const x2: number = w - 3 * bw;
         const y1: number = bw;
-        const y2: number = h - 2 * bw;
         const paperW: number = w - 4 * bw;
         const paperH: number = h - 2 * bw;
-        // draw paper background
-        ctx.fillStyle = "white";
+        // Draw the mat and a mitered wooden frame with beveled edges.
+        ctx.fillStyle = "#f4f0e6";
         ctx.fillRect(x1, y1, paperW, paperH);
-        // draw black border
-        ctx.fillStyle = "#eeeeee";
-        // top left to top right
-        ctx.fillRect(x1, y1, paperW, bw);
-        // buttom left to bottom right
-        ctx.fillRect(x1, y2, paperW, bw);
-        // top left to bottom left
-        ctx.fillRect(x1, y1 + bw, bw, y2 - 2 * bw);
-        // top right to bottom right
-        ctx.fillRect(x2, y1 + bw, bw, y2 - 2 * bw);
+        if (bw > 0) {
+            const right: number = x1 + paperW;
+            const bottom: number = y1 + paperH;
+            const horizontal: CanvasGradient = ctx.createLinearGradient(0, y1, 0, y1 + bw);
+            horizontal.addColorStop(0, "#2c1911");
+            horizontal.addColorStop(0.18, "#795138");
+            horizontal.addColorStop(0.55, "#67402b");
+            horizontal.addColorStop(0.85, "#3b2217");
+            horizontal.addColorStop(1, "#21130e");
+            const vertical: CanvasGradient = ctx.createLinearGradient(x1, 0, x1 + bw, 0);
+            vertical.addColorStop(0, "#21130e");
+            vertical.addColorStop(0.18, "#67402b");
+            vertical.addColorStop(0.55, "#54321f");
+            vertical.addColorStop(0.85, "#342016");
+            vertical.addColorStop(1, "#1c100c");
+
+            ctx.fillStyle = horizontal;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(right, y1);
+            ctx.lineTo(right - bw, y1 + bw);
+            ctx.lineTo(x1 + bw, y1 + bw);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = vertical;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x1 + bw, y1 + bw);
+            ctx.lineTo(x1 + bw, bottom - bw);
+            ctx.lineTo(x1, bottom);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.save();
+            ctx.translate(right + x1, bottom + y1);
+            ctx.rotate(Math.PI);
+            ctx.fillStyle = horizontal;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(right, y1);
+            ctx.lineTo(right - bw, y1 + bw);
+            ctx.lineTo(x1 + bw, y1 + bw);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = vertical;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x1 + bw, y1 + bw);
+            ctx.lineTo(x1 + bw, bottom - bw);
+            ctx.lineTo(x1, bottom);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            ctx.strokeStyle = "rgba(36, 20, 13, 0.35)";
+            ctx.lineWidth = Math.max(1, bw / 8);
+            ctx.strokeRect(x1 + bw, y1 + bw, paperW - 2 * bw, paperH - 2 * bw);
+        }
         if (image) {
             let ix: number = 4 * bw;
             let iy: number = 4 * bw;
@@ -126,7 +173,12 @@ class PhotoFrame {
             if (ih < origh) {
                 iy = Math.floor(iy + (origh - ih) / 2);
             }
+            ctx.save();
+            ctx.shadowColor = "rgba(40, 30, 20, 0.35)";
+            ctx.shadowBlur = Math.max(1, bw / 3);
+            ctx.shadowOffsetY = Math.max(1, bw / 8);
             ctx.drawImage(image, ix, iy, iw, ih);
+            ctx.restore();
         }
         return animate;
     }
@@ -242,10 +294,7 @@ class PhotoFrame {
     }
 
     async initAsync(): Promise<void>  {
-        const redirected: boolean = await this.security.authenticateLongLivedTokenAsync();
-        if (redirected) {
-            return;
-        }
+        await this.security.authenticateLongLivedTokenAsync();
         const params:URLSearchParams = new URLSearchParams(window.location.search);
         if (params.has("delay")) {
             this.delay = parseInt(params.get("delay")!);
