@@ -2,6 +2,8 @@
 import { ControlUtils } from "./ControlUtils";
 import { ArrayUtils } from "./ArrayUtils";
 import { Security } from "./Security";
+import { version } from "../package.json";
+import { parse } from "exifr";
 
 type Dimension = {
     w: number;
@@ -11,6 +13,8 @@ type Dimension = {
 class PhotoFrame {
     
     private canvas?: HTMLCanvasElement;
+    private versionLabel?: HTMLElement;
+    private dateLabel?: HTMLElement;
     private dirty: boolean = true;
     private image?: HTMLImageElement;
     private lastWindowWidth: number = 0;
@@ -35,6 +39,7 @@ class PhotoFrame {
             if (this.canvas) {
                 const ctx: CanvasRenderingContext2D = this.canvas.getContext("2d")!;
                 this.dirty = this.drawImage(ctx, this.canvas, this.image, this.animateWidth, this.animateHeight);    
+                this.updateLabelVisibility();
             }
         }
         window.requestAnimationFrame(() => this.draw());
@@ -223,7 +228,35 @@ class PhotoFrame {
                 this.image = img;
                 this.dirty = true;
                 this.nextCounter = 0;
+                if (this.dateLabel) {
+                    this.dateLabel.textContent = "";
+                    this.updateLabelVisibility();
+                }
+                void this.showPhotoDate(img);
             }, false);
+        }
+    }
+
+    private async showPhotoDate(img: HTMLImageElement): Promise<void> {
+        try {
+            const response = await fetch(img.currentSrc);
+            if (!response.ok) {
+                throw new Error(`Photo request failed with status ${response.status}`);
+            }
+            const blob = await response.blob();
+            const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+            if (header[0] !== 0xff || header[1] !== 0xd8) {
+                return;
+            }
+            const metadata = await parse(blob, ["DateTimeOriginal"]);
+            const date = metadata?.DateTimeOriginal;
+            if (this.image === img && this.dateLabel && date instanceof Date && !Number.isNaN(date.getTime())) {
+                this.dateLabel.textContent = date.toLocaleDateString();
+                this.updateLabelVisibility();
+            }
+        }
+        catch (error) {
+            console.warn("Could not read the photo capture date:", error);
         }
     }
 
@@ -234,6 +267,21 @@ class PhotoFrame {
         this.lastWindowWidth = window.innerWidth;
         this.nextCounter = 0;
         this.dirty = true;
+        this.updateLabelVisibility();
+    }
+
+    private updateLabelVisibility(): void {
+        if (this.canvas) {
+            const canvasRect = this.canvas.getBoundingClientRect();
+            for (const label of [this.versionLabel, this.dateLabel]) {
+                if (label) {
+                    const labelRect = label.getBoundingClientRect();
+                    const fits = !!label.textContent && labelRect.left >= 0 && labelRect.right <= window.innerWidth &&
+                        labelRect.top >= 0 && labelRect.top >= canvasRect.bottom + 8;
+                    label.style.visibility = fits ? "visible" : "hidden";
+                }
+            }
+        }
     }
 
     private render(): void {
@@ -245,6 +293,9 @@ class PhotoFrame {
         this.canvas!.height = dim.h;
         this.animateWidth = dim.w;
         this.animateHeight = dim.h;
+        this.versionLabel = ControlUtils.create(document.body, "div", "version", `v${version}`);
+        this.dateLabel = ControlUtils.create(document.body, "div", "photo-date");
+        this.updateLabelVisibility();
         this.toggleNextUrl();
         addEventListener("click", () => this.toggleNextUrl());
         addEventListener("resize", () => this.onResize());

@@ -20,6 +20,25 @@ body {
     justify-content: center;
 }
 
+.version, .photo-date {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    visibility: hidden;
+    color: #aaa;
+    font: 12px sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.version {
+    bottom: 8px;
+}
+
+.photo-date {
+    bottom: 30px;
+}
+
 @media (max-width: 767px) {
     body {
         min-height: 100vh;
