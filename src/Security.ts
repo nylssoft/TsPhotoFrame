@@ -68,7 +68,7 @@ export class Security {
                 else {
                     this.setPinRequired(true);
                     const sanitizeUrl: string = this.sanitizeLocation(window.location.href);
-                    this.setSanitizedWindowLocation("/pwdman?nexturl=" + encodeURI(sanitizeUrl));
+                    this.setSanitizedWindowLocation("/pwdman?nexturl=" + encodeURIComponent(sanitizeUrl));
                     return true;
                 }    
             }
@@ -130,7 +130,7 @@ export class Security {
                 }
                 const validurls: string[] = [
                     "/backgammon", "/chess", "/contacts", "/diary", "/documents", "/notes", "/password",
-                    "/pwdman", "/skat", "/skatticket", "/slideshow", "/tetris", "/usermgmt", "/view", "/makeadate"];
+                    "/photoframe", "/photoframe/", "/pwdman", "/skat", "/skatticket", "/slideshow", "/tetris", "/usermgmt", "/view", "/makeadate"];
                 if (validurls.includes(testurl)) {
                     return url;
                 }
