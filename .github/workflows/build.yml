@@ -1,21 +1,25 @@
 name: Build Photo Frame
 on: workflow_dispatch
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
-    - name: Setup node
-      uses: actions/setup-node@v4
-    - name: Build
-      run: |
-        npm install
-        npm run build
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/checkout@v6
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
       with:
-        name: build-${{ github.run_number }}
+        node-version: 24
+        cache: npm
+    - name: Install dependencies
+      run: npm ci
+    - name: Build
+      run: npm run build
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: photoframe-${{ github.run_number }}
         path: dist
+        if-no-files-found: error
