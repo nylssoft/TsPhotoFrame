@@ -11,17 +11,14 @@ type Dimension = {
 class PhotoFrame {
     
     private canvas?: HTMLCanvasElement;
-    private extraCanvas?: HTMLCanvasElement;
     private dirty: boolean = true;
     private image?: HTMLImageElement;
-    private extraImage?: HTMLImageElement;
     private lastWindowWidth: number = 0;
     private animateWidth: number = 0;
     private animateHeight: number = 0;
     private originalUrls: string[] = [];
     private urlStack: string[] = [];
     private nextCounter: number = -1;
-    private toggle: boolean = false;
     private delay: number = 50 * 10;
     private shuffle: boolean = true;
 
@@ -38,11 +35,6 @@ class PhotoFrame {
             if (this.canvas) {
                 const ctx: CanvasRenderingContext2D = this.canvas.getContext("2d")!;
                 this.dirty = this.drawImage(ctx, this.canvas, this.image, this.animateWidth, this.animateHeight);    
-            }
-            if (this.extraCanvas) {
-                const ctx: CanvasRenderingContext2D = this.extraCanvas.getContext("2d")!;
-                let dirty: boolean = this.drawImage(ctx, this.extraCanvas, this.extraImage, this.animateWidth, this.animateHeight);
-                this.dirty = this.dirty || dirty;
             }
         }
         window.requestAnimationFrame(() => this.draw());
@@ -227,42 +219,11 @@ class PhotoFrame {
         this.nextCounter = 0;
         const img: HTMLImageElement | undefined = this.createImage(this.getNextUrl());
         if (img) {
-            if (this.extraCanvas && this.toggle) {
-                img.addEventListener("load", () => {
-                    this.extraImage = img;
-                    this.dirty = true;
-                    this.nextCounter = 0;
-                }, false);
-            }
-            else {
-                img.addEventListener("load", () => {
-                    this.image = img;
-                    this.dirty = true;
-                    this.nextCounter = 0;
-                }, false);
-            }
-            this.toggle = !this.toggle;
-        }
-    }
-
-    private createExtraCanvas(height: number): void {
-        let extraContainer: HTMLElement = document.getElementById("extra")!;
-        if (window.innerHeight > 2 * height && !this.extraCanvas) {
-            this.extraCanvas = ControlUtils.create(extraContainer, "canvas") as HTMLCanvasElement;
-            this.extraCanvas.width = this.canvas!.width;
-            this.extraCanvas.height = this.canvas!.height;
-            const img = this.createImage(this.getNextUrl());
-            if (img) {
-                img.addEventListener("load", () => {
-                    this.extraImage = img;
-                    this.dirty = true;
-                    this.nextCounter = 0;
-                }, false);    
-            }
-        }
-        else if (window.innerHeight <= 2 * height) {
-            this.extraCanvas = undefined;
-            ControlUtils.removeAllChildren(extraContainer);
+            img.addEventListener("load", () => {
+                this.image = img;
+                this.dirty = true;
+                this.nextCounter = 0;
+            }, false);
         }
     }
 
@@ -271,7 +232,6 @@ class PhotoFrame {
         this.animateWidth = dim.w;
         this.animateHeight = dim.h;
         this.lastWindowWidth = window.innerWidth;
-        this.createExtraCanvas(dim.h);
         this.nextCounter = 0;
         this.dirty = true;
     }
@@ -279,15 +239,12 @@ class PhotoFrame {
     private render(): void {
         ControlUtils.removeAllChildren(document.body);
         const mainDiv: HTMLDivElement = ControlUtils.createDiv(document.body, "container");
-        const extraDiv: HTMLDivElement = ControlUtils.createDiv(document.body, "container");
-        extraDiv.id = "extra";
         this.canvas = ControlUtils.create(mainDiv, "canvas") as HTMLCanvasElement;
         const dim: Dimension = this.getWidthAndHeight(this.canvas!, this.lastWindowWidth);
         this.canvas!.width = dim.w;
         this.canvas!.height = dim.h;
         this.animateWidth = dim.w;
         this.animateHeight = dim.h;
-        this.createExtraCanvas(dim.h)
         this.toggleNextUrl();
         addEventListener("click", () => this.toggleNextUrl());
         addEventListener("resize", () => this.onResize());

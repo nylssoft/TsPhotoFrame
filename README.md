@@ -1,6 +1,6 @@
 # TsPhotoFrame
 
-TsPhotoFrame is a digital photo frame for [stockfleth.eu](https://stockfleth.eu/), a private portal for family and friends. It displays a slideshow that adjusts to the browser window; click or tap to advance to the next photo.
+TsPhotoFrame is a digital photo frame for [stockfleth.eu](https://stockfleth.eu/), a private portal for family and friends. It displays one photo at a time in a slideshow that adjusts to the browser window; click or tap to advance to the next photo.
 
 This repository contains the browser application, built with TypeScript and Vite. The companion [MynaAPIServer](https://github.com/nylssoft/MynaAPIServer) handles authentication and provides the photo URLs.
 
