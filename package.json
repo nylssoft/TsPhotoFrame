@@ -1,6 +1,6 @@
 {
   "name": "tsphotoframe",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Digital photo frame for stockfleth.eu",
   "private": true,
   "scripts": {

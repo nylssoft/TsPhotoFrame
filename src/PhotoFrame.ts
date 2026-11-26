@@ -25,6 +25,9 @@ class PhotoFrame {
     private nextCounter: number = -1;
     private delay: number = 50 * 10;
     private shuffle: boolean = true;
+    private cornerClickCount: number = 0;
+    private lastCornerClick: number = 0;
+    private versionHideTimer?: number;
 
     private security: Security = new Security();
 
@@ -273,15 +276,34 @@ class PhotoFrame {
     private updateLabelVisibility(): void {
         if (this.canvas) {
             const canvasRect = this.canvas.getBoundingClientRect();
-            for (const label of [this.versionLabel, this.dateLabel]) {
-                if (label) {
-                    const labelRect = label.getBoundingClientRect();
-                    const fits = !!label.textContent && labelRect.left >= 0 && labelRect.right <= window.innerWidth &&
-                        labelRect.top >= 0 && labelRect.top >= canvasRect.bottom + 8;
-                    label.style.visibility = fits ? "visible" : "hidden";
-                }
+            if (this.dateLabel) {
+                const labelRect = this.dateLabel.getBoundingClientRect();
+                const fits = !!this.dateLabel.textContent && labelRect.left >= 0 && labelRect.right <= window.innerWidth &&
+                    labelRect.top >= 0 && labelRect.top >= canvasRect.bottom + 8;
+                this.dateLabel.style.visibility = fits ? "visible" : "hidden";
             }
         }
+    }
+
+    private onClick(event: MouseEvent): void {
+        if (event.clientX < 64 && event.clientY >= window.innerHeight - 64) {
+            const now = Date.now();
+            this.cornerClickCount = now - this.lastCornerClick <= 1000 ? this.cornerClickCount + 1 : 1;
+            this.lastCornerClick = now;
+            if (this.cornerClickCount === 3 && this.versionLabel) {
+                this.cornerClickCount = 0;
+                this.versionLabel.style.visibility = "visible";
+                window.clearTimeout(this.versionHideTimer);
+                this.versionHideTimer = window.setTimeout(() => {
+                    if (this.versionLabel) {
+                        this.versionLabel.style.visibility = "hidden";
+                    }
+                }, 5000);
+            }
+            return;
+        }
+        this.cornerClickCount = 0;
+        this.toggleNextUrl();
     }
 
     private render(): void {
@@ -295,9 +317,10 @@ class PhotoFrame {
         this.animateHeight = dim.h;
         this.versionLabel = ControlUtils.create(document.body, "div", "version", `v${version}`);
         this.dateLabel = ControlUtils.create(document.body, "div", "photo-date");
+        ControlUtils.create(document.body, "div", "version-trigger").setAttribute("aria-hidden", "true");
         this.updateLabelVisibility();
         this.toggleNextUrl();
-        addEventListener("click", () => this.toggleNextUrl());
+        addEventListener("click", (event) => this.onClick(event));
         addEventListener("resize", () => this.onResize());
     }
 
